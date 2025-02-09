@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "155691175024",
+    "project_id": "hackmaster2",
+    "storage_bucket": "hackmaster2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:155691175024:android:66dcf30dc8a7ba1183f8b5",
+        "android_client_info": {
+          "package_name": "com.example.blood"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "155691175024-ch90ug86u577o9u25qplc6vetqoi7gkg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.blood",
+            "certificate_hash": "c8555b01203a034ab2c541ae16233931ce35048b"
+          }
+        },
+        {
+          "client_id": "155691175024-hap60k3alq8fkjmenvcfn17o6f424m9r.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCNbw2nBTC4WwODIx3XNY0xqaS6RBxI8b4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "155691175024-hap60k3alq8fkjmenvcfn17o6f424m9r.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
