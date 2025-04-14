@@ -16,6 +16,7 @@ class DonationEligibilityForm extends StatefulWidget {
     required this.email,
     required this.imgUrl,
     required this.user,
+    required String role,
   });
 
   @override
@@ -28,9 +29,18 @@ class _DonationEligibilityFormState extends State<DonationEligibilityForm> {
   String? bloodType;
   String area = '';
   String state = '';
-  bool isLoading = false; // Initially false, location is not fetched yet
+  bool isLoading = false;
   bool isAgeVerified = false;
-  bool locationFetched = false; // Track if location has been fetched
+  bool locationFetched = false;
+  bool isLocationButtonLoading = false;
+
+  // Phone verification states
+  final phoneController = TextEditingController();
+  final otpController = TextEditingController();
+  bool isPhoneVerified = false;
+  bool isOtpSent = false;
+  String? verificationId;
+  bool isVerifyingPhone = false;
 
   final List<String> bloodTypes = [
     'A+',
@@ -43,87 +53,17 @@ class _DonationEligibilityFormState extends State<DonationEligibilityForm> {
     'O-'
   ];
 
-  Future<void> _getCurrentLocation() async {
-    setState(() {
-      isLoading = true; // Show loading indicator while fetching
-      area = 'Fetching location...'; // Optional: Display a message
-    });
-    try {
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          setState(() {
-            area = 'Location permission denied';
-            isLoading = false;
-            locationFetched = false;
-          });
-          return;
-        }
-      }
-
-      Position position = await Geolocator.getCurrentPosition(
-          desiredAccuracy: LocationAccuracy.high);
-
-      List<Placemark> placemarks = await placemarkFromCoordinates(
-        position.latitude,
-        position.longitude,
-      );
-
-      if (placemarks.isNotEmpty) {
-        Placemark place = placemarks[0];
-        setState(() {
-          area = place.locality ?? place.subLocality ?? '';
-          state = place.administrativeArea ?? '';
-          isLoading = false;
-          locationFetched = true; // Set to true after successful fetch
-        });
-      }
-    } catch (e) {
-      setState(() {
-        area = 'Error fetching location';
-        isLoading = false;
-        locationFetched = false;
-      });
-    }
-  }
-
-  Widget _buildLocationDisplay() {
-    if (!locationFetched) {
-      // Show the button if location hasn't been fetched
-      return Center(
-        child: ElevatedButton(
-          onPressed: _getCurrentLocation,
-          child: Text('Check Location'),
-        ),
-      );
-    }
-
-    if (isLoading) {
-      return Center(child: CircularProgressIndicator());
-    }
-
-    return Row(
-      children: [
-        Expanded(
-          child: Text(
-            '$area, $state',
-            style: TextStyle(fontSize: 16, color: Colors.black87),
-          ),
-        ),
-        TextButton.icon(
-          icon: Icon(Icons.refresh, size: 20),
-          label: Text('Refresh'),
-          onPressed: _getCurrentLocation,
-        ),
-      ],
-    );
+  @override
+  void dispose() {
+    phoneController.dispose();
+    otpController.dispose();
+    super.dispose();
   }
 
   Future<void> _selectDate(BuildContext context) async {
     final DateTime? picked = await showDatePicker(
       context: context,
-      initialDate: DateTime(2025),
+      initialDate: DateTime(2005),
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
       builder: (context, child) {
@@ -149,6 +89,294 @@ class _DonationEligibilityFormState extends State<DonationEligibilityForm> {
     }
   }
 
+  Future<void> _getCurrentLocation() async {
+    setState(() {
+      isLocationButtonLoading = true;
+    });
+
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          setState(() {
+            area = 'Location permission denied';
+            isLocationButtonLoading = false;
+            locationFetched = false;
+          });
+          return;
+        }
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high);
+
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+
+      if (placemarks.isNotEmpty) {
+        Placemark place = placemarks[0];
+        setState(() {
+          area = place.locality ?? place.subLocality ?? '';
+          state = place.administrativeArea ?? '';
+          isLocationButtonLoading = false;
+          locationFetched = true;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        area = 'Error fetching location';
+        isLocationButtonLoading = false;
+        locationFetched = false;
+      });
+    }
+  }
+
+  Widget _buildLocationDisplay() {
+    if (!locationFetched) {
+      return Center(
+        child: ElevatedButton(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red,
+          ),
+          onPressed: isLocationButtonLoading ? null : _getCurrentLocation,
+          child: isLocationButtonLoading
+              ? SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+              : Text('Check Location'),
+        ),
+      );
+    }
+
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            '$area, $state',
+            style: TextStyle(fontSize: 16, color: Colors.black87),
+          ),
+        ),
+        TextButton.icon(
+          icon: Icon(Icons.refresh, size: 20),
+          label: Text('Refresh'),
+          onPressed: _getCurrentLocation,
+        ),
+      ],
+    );
+  }
+
+  Future<void> _verifyPhone() async {
+    if (phoneController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Please enter a valid phone number')),
+      );
+      return;
+    }
+
+    setState(() {
+      isVerifyingPhone = true;
+    });
+
+    try {
+      await FirebaseAuth.instance.verifyPhoneNumber(
+        phoneNumber: phoneController.text,
+        verificationCompleted: (PhoneAuthCredential credential) async {
+          await FirebaseAuth.instance.currentUser
+              ?.updatePhoneNumber(credential);
+          setState(() {
+            isPhoneVerified = true;
+            isVerifyingPhone = false;
+          });
+        },
+        verificationFailed: (FirebaseAuthException e) {
+          setState(() {
+            isVerifyingPhone = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.message ?? 'Verification failed')),
+          );
+        },
+        codeSent: (String vId, int? resendToken) {
+          setState(() {
+            verificationId = vId;
+            isOtpSent = true;
+            isVerifyingPhone = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('OTP sent successfully')),
+          );
+        },
+        codeAutoRetrievalTimeout: (String vId) {
+          setState(() {
+            verificationId = vId;
+            isVerifyingPhone = false;
+          });
+        },
+      );
+    } catch (e) {
+      setState(() {
+        isVerifyingPhone = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error sending OTP')),
+      );
+    }
+  }
+
+  Future<void> _verifyOTP() async {
+    if (otpController.text.isEmpty || verificationId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Please enter the OTP')),
+      );
+      return;
+    }
+
+    setState(() {
+      isVerifyingPhone = true;
+    });
+
+    try {
+      PhoneAuthCredential credential = PhoneAuthProvider.credential(
+        verificationId: verificationId!,
+        smsCode: otpController.text,
+      );
+
+      await FirebaseAuth.instance.currentUser?.updatePhoneNumber(credential);
+
+      setState(() {
+        isPhoneVerified = true;
+        isVerifyingPhone = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Phone number verified successfully')),
+      );
+    } catch (e) {
+      setState(() {
+        isVerifyingPhone = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Invalid OTP')),
+      );
+    }
+  }
+
+  Widget _buildPhoneVerificationCard() {
+    return Card(
+      elevation: 4,
+      child: Padding(
+        padding: EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Phone Verification',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: 16),
+            if (!isPhoneVerified) ...[
+              TextField(
+                controller: phoneController,
+                decoration: InputDecoration(
+                  border: OutlineInputBorder(),
+                  labelText: 'Phone Number',
+                  prefixIcon: Icon(Icons.phone),
+                  hintText: '+1234567890',
+                ),
+                keyboardType: TextInputType.phone,
+                enabled: !isOtpSent,
+              ),
+              SizedBox(height: 8),
+              if (!isOtpSent)
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                    ),
+                    onPressed: isVerifyingPhone ? null : _verifyPhone,
+                    child: isVerifyingPhone
+                        ? SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Text('Send OTP'),
+                  ),
+                ),
+              if (isOtpSent) ...[
+                SizedBox(height: 16),
+                TextField(
+                  controller: otpController,
+                  decoration: InputDecoration(
+                    border: OutlineInputBorder(),
+                    labelText: 'Enter OTP',
+                    prefixIcon: Icon(Icons.lock),
+                  ),
+                  keyboardType: TextInputType.number,
+                ),
+                SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                        ),
+                        onPressed: isVerifyingPhone ? null : _verifyOTP,
+                        child: isVerifyingPhone
+                            ? SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white),
+                                ),
+                              )
+                            : Text('Verify OTP'),
+                      ),
+                    ),
+                    SizedBox(width: 8),
+                    TextButton(
+                      onPressed: isVerifyingPhone ? null : _verifyPhone,
+                      child: Text('Resend OTP'),
+                    ),
+                  ],
+                ),
+              ],
+            ] else
+              Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.green),
+                  SizedBox(width: 8),
+                  Text(
+                    'Phone Verified',
+                    style: TextStyle(color: Colors.green),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Future<void> _storeUserData() async {
     if (widget.user == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -156,6 +384,10 @@ class _DonationEligibilityFormState extends State<DonationEligibilityForm> {
       );
       return;
     }
+
+    setState(() {
+      isLoading = true;
+    });
 
     try {
       final usersCollection = FirebaseFirestore.instance.collection('users');
@@ -167,16 +399,32 @@ class _DonationEligibilityFormState extends State<DonationEligibilityForm> {
         'imgUrl': widget.imgUrl,
         'location': '$area, $state',
         'bloodGroup': bloodType,
-        'dob': selectedDate != null ? selectedDate!.toIso8601String() : null,
+        'dob': selectedDate?.toIso8601String(),
+        'phoneNumber': phoneController.text,
+        'isPhoneVerified': isPhoneVerified,
+        'lastUpdated': FieldValue.serverTimestamp(),
       };
 
-      await usersCollection.doc(widget.user!.uid).set(userData);
+      await usersCollection
+          .doc(widget.user!.uid)
+          .set(userData, SetOptions(merge: true));
 
-      Navigator.of(context).pushNamed('/home');
-    } catch (e) {
-      print('Error storing data: $e');
+      setState(() {
+        isLoading = false;
+      });
+
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error storing data. Please try again.')),
+        SnackBar(content: Text('Profile updated successfully!')),
+      );
+
+      Navigator.of(context).pop();
+    } catch (e) {
+      setState(() {
+        isLoading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error updating profile. Please try again.')),
       );
     }
   }
@@ -298,6 +546,8 @@ class _DonationEligibilityFormState extends State<DonationEligibilityForm> {
               ),
             ),
             SizedBox(height: 16),
+            _buildPhoneVerificationCard(),
+            SizedBox(height: 16),
             Card(
               elevation: 4,
               child: Padding(
@@ -319,29 +569,74 @@ class _DonationEligibilityFormState extends State<DonationEligibilityForm> {
                       ],
                     ),
                     SizedBox(height: 12),
-                    _buildLocationDisplay(), // The updated location display
+                    _buildLocationDisplay(),
                   ],
                 ),
               ),
             ),
             SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  padding: EdgeInsets.symmetric(vertical: 16),
+            if (isLoading)
+              Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.red),
                 ),
-                onPressed:
-                    (isAgeVerified && bloodType != null && locationFetched)
-                        ? _storeUserData
-                        : null,
-                child: Text(
-                  'Continue',
-                  style: TextStyle(fontSize: 16),
+              )
+            else
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  onPressed: (isAgeVerified &&
+                          bloodType != null &&
+                          locationFetched &&
+                          isPhoneVerified)
+                      ? _storeUserData
+                      : null,
+                  child: Text(
+                    'Continue',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ),
-            ),
+            SizedBox(height: 16),
+            if (!(isAgeVerified &&
+                bloodType != null &&
+                locationFetched &&
+                isPhoneVerified))
+              Card(
+                elevation: 0,
+                color: Colors.grey[100],
+                child: Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Required to continue:',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.grey[700],
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      if (!isAgeVerified)
+                        Text('• Age verification (must be 18+)'),
+                      if (bloodType == null) Text('• Select blood type'),
+                      if (!locationFetched) Text('• Location verification'),
+                      if (!isPhoneVerified) Text('• Phone number verification'),
+                    ],
+                  ),
+                ),
+              ),
           ],
         ),
       ),

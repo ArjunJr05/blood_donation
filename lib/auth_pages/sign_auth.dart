@@ -1,4 +1,4 @@
-import 'package:blood/auth_pages/get.dart'; // Correct path if needed
+import 'package:blood/auth_pages/get.dart';
 import 'package:flutter/material.dart';
 import 'package:animated_background/animated_background.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -49,14 +49,7 @@ class _SignupPageState extends State<SignupPage> with TickerProviderStateMixin {
 
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(
-              builder: (context) => DonationEligibilityForm(
-                name: _nameController.text, // Pass the name
-                email: _emailController.text, // Pass the email
-                imgUrl: user.photoURL ?? "", // Pass image URL (may be null)
-                user: user, // Pass the User object
-              ),
-            ),
+            MaterialPageRoute(builder: (context) => HomeScreen()),
           );
         } else {
           // Handle the case where the user is null after registration

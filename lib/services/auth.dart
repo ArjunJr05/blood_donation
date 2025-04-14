@@ -67,14 +67,7 @@ class AuthMethods {
           Navigator.pop(context); // Dismiss loading dialog
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(
-              builder: (context) => DonationEligibilityForm(
-                name: userDetails.displayName ?? "", // Provide default value
-                email: userDetails.email ?? "", // Provide default value
-                imgUrl: userDetails.photoURL ?? "", // Provide default value
-                user: userDetails, // Pass the User object
-              ),
-            ),
+            MaterialPageRoute(builder: (context) => HomeScreen()),
           );
         });
       }
